@@ -195,40 +195,53 @@ pipeline {
     }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
+        SONAR_TOKEN = credentials('sonar-token')
     }
     stages {
-        stage('clean workspace') {
-            steps {
-                cleanWs()
-            }
+        stage('Clean workspace') {
+            steps { cleanWs() }
         }
         stage('Checkout from Git') {
             steps {
                 git branch: 'main', url: 'https://github.com/didin8080/DevSecOps-Project.git'
             }
         }
-        stage("Sonarqube Analysis") {
+        stage('Install Dependencies') {
+            steps { sh 'npm install' }
+        }
+        stage('Sonarqube Analysis') {
             steps {
                 withSonarQubeEnv('sonar-server') {
-                    sh '''$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=netflix \
-                    -Dsonar.projectKey=netflix'''
+                    sh '''
+                        echo "Running SonarQube Scanner with Quality Gate wait..."
+                        $SCANNER_HOME/bin/sonar-scanner \
+                          -Dsonar.projectKey=netflix \
+                          -Dsonar.projectName=netflix \
+                          -Dsonar.sources=. \
+                          -Dsonar.login=${SONAR_TOKEN} \
+                          -Dsonar.qualitygate.wait=true \
+                          -Dsonar.qualitygate.timeout=600
+                    '''
                 }
             }
         }
-        stage("quality gate") {
+        stage('Quality Gate') {
             steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                timeout(time: 5, unit: 'MINUTES') {
+                    // optional small delay to avoid webhook race conditions
+                    sleep 10
+                    script {
+                        def qg = waitForQualityGate(abortPipeline: true)
+                        if (qg.status != 'OK') {
+                            error "Pipeline failed quality gate: ${qg.status}"
+                        }
+                    }
                 }
-            }
-        }
-        stage('Install Dependencies') {
-            steps {
-                sh "npm install"
             }
         }
     }
 }
+
 ```
 
 Certainly, here are the instructions without step numbers:
